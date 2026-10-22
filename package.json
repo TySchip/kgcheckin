@@ -2,6 +2,7 @@
   "name": "kgcheckin",
   "type": "module",
   "scripts": {
+    "test": "node --experimental-test-module-mocks --test test/*.test.js",
     "main": "node main.js",
     "install": "cd api && npm ci",
     "apiService": "cd api && npm run start",

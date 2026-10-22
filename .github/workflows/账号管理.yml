@@ -1,0 +1,65 @@
+name: 账号管理
+run-name: ${{ inputs.operation }}${{ inputs.account && format(' · 账号 {0}', inputs.account) || '' }}
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: '操作：查看账号列表，或单独启用/停用一个账号'
+        type: choice
+        required: true
+        default: '查看账号'
+        options:
+          - 查看账号
+          - 启用账号
+          - 停用账号
+      account:
+        description: '账号编号：启用/停用时必填，查看账号时留空'
+        type: string
+        required: false
+permissions:
+  contents: write
+concurrency:
+  group: kgcheckin-accounts
+  queue: max
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+      - name: 创建 Node 环境
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: 安装查询所需依赖
+        if: ${{ inputs.operation == '查看账号' }}
+        run: npm run install
+      - name: 管理账号
+        run: node accountManager.js
+        env:
+          USERINFO: ${{ secrets.USERINFO }}
+          ACCOUNT_ACTION: ${{ inputs.operation }}
+          ACCOUNT: ${{ inputs.account }}
+          ACCOUNT_SUMMARY: ${{ runner.temp }}/accounts-summary.md
+      - name: 保存账号开关
+        if: ${{ inputs.operation != '查看账号' }}
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git add .github/account-settings.json
+          if git diff --cached --quiet; then
+            echo "账号开关没有变化"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore: update account check-in settings'
+          git pull --rebase origin "$DEFAULT_BRANCH"
+          git push origin "HEAD:$DEFAULT_BRANCH"
+      - name: 显示账号列表
+        run: cat "$RUNNER_TEMP/accounts-summary.md" >> "$GITHUB_STEP_SUMMARY"

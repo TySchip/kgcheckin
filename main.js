@@ -3,16 +3,20 @@ import { hasSecretWriteToken, setRepoSecret } from "./utils/githubSecrets.js";
 import { maskDisplayName, maskIdentifier, sanitizeForLog, summarizeResponse } from "./utils/safeLog.js";
 import { sendNotify } from "./utils/notify.js";
 import { close_api, delay, send, startService, waitForApi } from "./utils/utils.js";
+import { parseAccounts, readAccountSettings, selectAccounts } from "./utils/accounts.js";
 
 async function main() {
 
   const USERINFO = process.env.USERINFO
   // 刷新token
   let needRefresh = false
-  if (!USERINFO) {
-    throw new Error("未配置")
+  const userinfo = parseAccounts(USERINFO)
+  const accounts = selectAccounts(userinfo, readAccountSettings(), process.env.ACCOUNT ?? 'all')
+  if (accounts.length === 0) {
+    printYellow('没有已启用的账号，本次不执行签到')
+    return
   }
-  const userinfo = JSON.parse(USERINFO)
+  printBlue(`本次签到账号编号：${accounts.map(account => account.number).join(', ')}`)
 
   // 启动服务并等待就绪（避免冷启动竞态导致首个请求失败）
   const api = startService()
@@ -39,7 +43,7 @@ async function main() {
 
   try {
     // 开始签到
-    for (const user of userinfo) {
+    for (const { user, number } of accounts) {
       // 单账号异常隔离：任何一个账号的请求/解析出错，只记录该账号失败，
       // 不影响其余账号继续执行，也保证后续通知与 secret 刷新一定能触发。
       try {
@@ -64,7 +68,7 @@ async function main() {
           continue
         }
         const safeNickname = maskDisplayName(userDetail.data.nickname)
-        printMagenta(`账号 ${safeNickname} 开始领取VIP...`)
+        printMagenta(`账号 ${number}（${safeNickname}）开始领取VIP...`)
 
         // 周日刷新token
         if (today.getDay() === 0) {
